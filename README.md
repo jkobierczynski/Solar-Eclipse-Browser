@@ -2,6 +2,8 @@
 
 An interactive 3D globe of every solar eclipse from 1900 to 2100 — total, annular, hybrid, and partial — with animated shadow paths, umbra/penumbra reach bands, and a searchable catalog.
 
+[Solar Eclipse Browser Demo](https://jurgenkobierczynski.com/Solar-Eclipse-Browser/index.html)
+
 ![Solar Eclipse Browser screenshot](screenshots/eclipse-atlas.png)
 
 ## What it does
