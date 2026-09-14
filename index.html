@@ -1,0 +1,1170 @@
+<meta charset="utf-8">
+<title>Solar Eclipse Browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,ital@9..144,400,500;9..144,600;9..144,1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    color-scheme: dark;
+    --topbar-h:    64px;
+    --void:        #05070c;
+    --void-2:      #070a12;
+    --panel:       #10141d;
+    --panel-2:     #161b26;
+    --panel-3:     #1c2230;
+    --border:      rgba(255,255,255,0.09);
+    --border-soft: rgba(255,255,255,0.05);
+    --ink:         #eef1f6;
+    --ink-soft:    #aab2c2;
+    --ink-mute:    #6b7383;
+    --accent:      #f2b84b;
+    --accent-ink:  #2a1c02;
+    --accent-dim:  rgba(242,184,75,0.14);
+    --c-total:     #e8794a;
+    --c-annular:   #4c93e8;
+    --c-hybrid:    #2fb88a;
+    --c-partial:   #6b7383;
+    --focus:       #7ec2ff;
+
+    --font-display: "Fraunces", Georgia, serif;
+    --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  ::selection{ background: var(--accent-dim); color: var(--ink); }
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+  ::-webkit-scrollbar-thumb{ background: var(--panel-3); border-radius:6px; }
+  ::-webkit-scrollbar-thumb:hover{ background:#28304a; }
+
+  button:focus-visible, input:focus-visible, [tabindex]:focus-visible{
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  #scene-root{ position:fixed; inset:0; }
+  #globe-canvas{ position:absolute; inset:0; display:block; width:100%; height:100%; }
+
+  #loading{
+    position:fixed; inset:0; z-index:50;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px;
+    background: radial-gradient(ellipse at 50% 40%, #0c1120 0%, var(--void) 70%);
+    transition: opacity .5s ease;
+  }
+  #loading.hidden{ opacity:0; pointer-events:none; }
+  .loading-glyph{
+    width:46px; height:46px; border-radius:50%;
+    background: radial-gradient(circle at 35% 32%, #fff7e6, var(--accent) 45%, #3a2705 100%);
+    box-shadow: 0 0 40px 6px rgba(242,184,75,0.35);
+    animation: spin 5s linear infinite;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+  #loading p{ font-family: var(--font-mono); font-size:12.5px; letter-spacing:.06em; color: var(--ink-mute); text-transform: uppercase; }
+
+  a{ color: inherit; }
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    position:fixed; top:0; left:0; right:0; z-index:20;
+    display:flex; align-items:center; gap:18px;
+    padding: 12px 18px;
+    background: linear-gradient(to bottom, rgba(6,8,14,0.92), rgba(6,8,14,0.65) 70%, transparent);
+    pointer-events:none;
+  }
+  #topbar > *{ pointer-events:auto; }
+  .brand{ display:flex; align-items:baseline; gap:10px; white-space:nowrap; }
+  .brand .moon{ font-size:20px; filter: drop-shadow(0 0 6px rgba(242,184,75,.5)); }
+  .brand h1{
+    font-family: var(--font-display); font-weight:600; font-size:20px;
+    margin:0; letter-spacing:.01em;
+  }
+  .brand .stat{
+    font-family: var(--font-mono); font-size:11px; color: var(--ink-mute);
+    border-left:1px solid var(--border); padding-left:10px; margin-left:2px;
+    white-space:nowrap;
+  }
+  .brand .stat b{ color: var(--ink-soft); font-weight:500; }
+
+  #filters{
+    display:flex; align-items:center; gap:16px; flex:1; min-width:0;
+    background: rgba(16,20,29,0.72);
+    border:1px solid var(--border); backdrop-filter: blur(10px);
+    border-radius:12px; padding:8px 16px; overflow-x:auto;
+  }
+  .filter-group{ display:flex; align-items:center; gap:9px; white-space:nowrap; }
+  .filter-label{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color: var(--ink-mute); }
+
+  .yr-range{ display:flex; align-items:center; gap:8px; }
+  .yr-range output{ font-family: var(--font-mono); font-size:12px; color: var(--ink-soft); width:74px; text-align:center; font-variant-numeric: tabular-nums; }
+  .dual-slider{ position:relative; width:150px; height:18px; }
+  .dual-slider input[type=range]{
+    position:absolute; left:0; right:0; top:5px; margin:0; width:100%;
+    -webkit-appearance:none; appearance:none; background:transparent; pointer-events:none; height:8px;
+  }
+  .dual-slider input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; pointer-events:auto;
+    width:13px; height:13px; border-radius:50%; background: var(--accent); border:2px solid #1a1206;
+    margin-top:-2.5px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.5);
+  }
+  .dual-slider input[type=range]::-moz-range-thumb{
+    pointer-events:auto; width:13px; height:13px; border-radius:50%; background: var(--accent); border:2px solid #1a1206; cursor:pointer;
+  }
+  .dual-slider input[type=range]::-webkit-slider-runnable-track{ height:3px; background:transparent; }
+  .dual-slider .track{ position:absolute; left:0; right:0; top:8px; height:3px; background: var(--panel-3); border-radius:2px; }
+  .dual-slider .track-fill{ position:absolute; top:8px; height:3px; background: var(--accent); border-radius:2px; }
+
+  .chip-toggle{
+    display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;
+    font-size:12.5px; color: var(--ink-soft); padding:5px 10px 5px 8px; border-radius:999px;
+    border:1px solid var(--border-soft); background: rgba(255,255,255,0.02);
+    transition: background .15s, border-color .15s, opacity .15s;
+  }
+  .chip-toggle input{ appearance:none; width:9px; height:9px; border-radius:50%; margin:0; flex:none; background: var(--dot,#888); box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.25); }
+  .chip-toggle:has(input:checked){ border-color: var(--dot); background: color-mix(in srgb, var(--dot) 14%, transparent); }
+  .chip-toggle:not(:has(input:checked)){ opacity:.5; }
+  .chip-toggle:hover{ opacity:.85; }
+
+  #catalog-toggle-btn{
+    display:none;
+    align-items:center; gap:7px;
+    background: var(--panel); border:1px solid var(--border); color: var(--ink);
+    font-family: var(--font-ui); font-size:12.5px; padding:9px 13px; border-radius:10px; cursor:pointer;
+  }
+
+  /* ---------- Catalog panel ---------- */
+  #catalog{
+    position:fixed; top: calc(var(--topbar-h) + 8px); left:16px; bottom:110px; z-index:15;
+    width:302px;
+    background: rgba(16,20,29,0.82); backdrop-filter: blur(10px);
+    border:1px solid var(--border); border-radius:14px;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  #catalog-search{
+    display:flex; align-items:center; gap:8px;
+    padding:11px 12px; border-bottom:1px solid var(--border-soft); flex:none;
+  }
+  #catalog-search input{
+    flex:1; background: var(--panel-2); border:1px solid var(--border-soft); border-radius:8px;
+    color: var(--ink); font-family: var(--font-ui); font-size:13px; padding:7px 10px;
+  }
+  #catalog-count{ font-family: var(--font-mono); font-size:10.5px; color: var(--ink-mute); flex:none; }
+  #catalog-list{ flex:1; overflow-y:auto; padding:4px 6px 10px; }
+  .decade-label{
+    font-family: var(--font-mono); font-size:10.5px; letter-spacing:.08em; color: var(--ink-mute);
+    padding:10px 8px 4px; text-transform:uppercase;
+  }
+  .ecl-row{
+    display:flex; align-items:center; gap:9px; width:100%; text-align:left;
+    background:transparent; border:1px solid transparent; border-radius:9px;
+    color: var(--ink-soft); padding:6.5px 8px; cursor:pointer; font-family:inherit;
+  }
+  .ecl-row:hover{ background: var(--panel-2); }
+  .ecl-row.active{ background: var(--accent-dim); border-color: rgba(242,184,75,0.4); color: var(--ink); }
+  .ecl-dot{ width:8px; height:8px; border-radius:50%; flex:none; background: var(--dot); }
+  .ecl-date{ font-family: var(--font-mono); font-size:12px; width:96px; flex:none; font-variant-numeric: tabular-nums; }
+  .ecl-kind{ font-size:11.5px; color: var(--ink-mute); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ecl-row.active .ecl-kind{ color: var(--ink-soft); }
+
+  /* ---------- Info card ---------- */
+  #infocard{
+    position:fixed; top: calc(var(--topbar-h, 64px) + 8px); right:16px; z-index:15; width:280px;
+    max-height: calc(100vh - var(--topbar-h, 64px) - 130px); overflow-y:auto;
+    background: rgba(16,20,29,0.86); backdrop-filter: blur(10px);
+    border:1px solid var(--border); border-radius:14px; padding:16px;
+    display:none;
+  }
+  #infocard.show{ display:block; }
+  #infocard .kind-tag{
+    display:inline-flex; align-items:center; gap:6px; font-size:11px; text-transform:uppercase; letter-spacing:.07em;
+    color: var(--tagcol); margin-bottom:8px;
+  }
+  #infocard .kind-tag::before{ content:""; width:7px; height:7px; border-radius:50%; background: var(--tagcol); }
+  #infocard h2{ font-family: var(--font-display); font-weight:500; font-size:19px; margin:0 0 12px; line-height:1.25; }
+  .stat-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; }
+  .stat-grid .full{ grid-column: 1 / -1; }
+  .stat-grid .k{ font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color: var(--ink-mute); margin-bottom:2px; }
+  .stat-grid .v{ font-family: var(--font-mono); font-size:13.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  #infocard-note{ margin-top:12px; font-size:12px; color: var(--ink-mute); line-height:1.45; }
+  #infocard-close{
+    position:absolute; top:12px; right:12px; background:none; border:none; color: var(--ink-mute);
+    font-size:16px; cursor:pointer; line-height:1; padding:2px;
+  }
+  #infocard-close:hover{ color: var(--ink); }
+
+  /* ---------- Transport console ---------- */
+  #console{
+    position:fixed; left:16px; right:16px; bottom:16px; z-index:20;
+    background: rgba(16,20,29,0.88); backdrop-filter: blur(10px);
+    border:1px solid var(--border); border-radius:14px;
+    display:flex; align-items:center; gap:18px; padding:12px 18px;
+  }
+  #console.empty .transport-controls, #console.empty #scrub-wrap{ opacity:.3; pointer-events:none; }
+  .transport-controls{ display:flex; align-items:center; gap:6px; flex:none; }
+  .tbtn{
+    width:38px; height:38px; border-radius:10px; border:1px solid var(--border);
+    background: var(--panel-2); color: var(--ink); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex:none;
+  }
+  .tbtn:hover{ background: var(--panel-3); }
+  .tbtn.primary{ background: var(--accent); color: var(--accent-ink); border-color: var(--accent); width:44px; height:44px; }
+  .tbtn.primary:hover{ filter: brightness(1.08); }
+  .tbtn svg{ width:16px; height:16px; }
+  .tbtn.primary svg{ width:18px; height:18px; }
+
+  #readout{ flex:none; min-width:190px; }
+  #readout .title{ font-size:12.5px; color: var(--ink-soft); margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px; }
+  #readout .clock{ font-family: var(--font-mono); font-size:20px; letter-spacing:.02em; font-variant-numeric: tabular-nums; }
+  #readout .clock .zone{ font-size:11px; color: var(--ink-mute); margin-left:5px; }
+
+  #scrub-wrap{ flex:1; display:flex; align-items:center; gap:10px; min-width:120px; }
+  #scrub{
+    flex:1; appearance:none; -webkit-appearance:none; height:4px; background: var(--panel-3); border-radius:3px; outline:none;
+  }
+  #scrub::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background: var(--accent);
+    border:2px solid #1a1206; cursor:pointer; margin-top:-5px;
+  }
+  #scrub::-moz-range-thumb{ width:14px; height:14px; border-radius:50%; background: var(--accent); border:2px solid #1a1206; cursor:pointer; }
+
+  .speed-select{
+    flex:none; display:flex; background: var(--panel-2); border:1px solid var(--border-soft); border-radius:9px; overflow:hidden;
+  }
+  .speed-select button{
+    background:none; border:none; color: var(--ink-mute); font-family: var(--font-mono); font-size:11.5px;
+    padding:8px 9px; cursor:pointer;
+  }
+  .speed-select button.active{ background: var(--panel-3); color: var(--ink); }
+
+  #legend{
+    position:fixed; z-index:15; bottom:16px; left:16px;
+    font-family: var(--font-mono); font-size:10.5px; color: var(--ink-mute);
+    display:flex; gap:12px; background: rgba(16,20,29,0.7); border:1px solid var(--border-soft);
+    padding:6px 11px; border-radius:9px; backdrop-filter: blur(8px);
+  }
+  #legend span{ display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  #legend i{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+
+  #hint{
+    position:fixed; z-index:12; top: calc(var(--topbar-h) + 8px); left:50%; transform:translateX(-50%);
+    font-family: var(--font-mono); font-size:11px; color: var(--ink-mute);
+    background: rgba(16,20,29,0.6); border:1px solid var(--border-soft); padding:6px 12px; border-radius:8px;
+    pointer-events:none; transition: opacity .6s ease;
+  }
+
+  @media (max-width: 860px){
+    #catalog{ display:none; }
+    #catalog.open{
+      display:flex; position:fixed; width:auto; top: calc(var(--topbar-h) + 8px); left:12px; right:12px; bottom:118px;
+    }
+    #catalog-toggle-btn{ display:flex; }
+    #legend{ display:none; }
+    #infocard{ width: min(280px, calc(100vw - 32px)); }
+  }
+
+  @media (max-width: 620px){
+    #topbar{ flex-wrap:wrap; gap:10px; padding:10px 12px; }
+    .brand .stat{ display:none; }
+    #hint{ display:none; }
+    #filters{ order:3; width:100%; flex-basis:100%; flex-wrap:wrap; row-gap:10px; overflow-x:visible; }
+    .filter-group{ flex-wrap:wrap; width:100%; }
+    .filter-group.yr-range .dual-slider{ flex:1; }
+    #console{ flex-wrap:wrap; padding:10px 14px; gap:10px; left:10px; right:10px; bottom:10px; }
+    #readout{ order:1; min-width:0; flex:1 1 auto; }
+    .transport-controls{ order:2; }
+    #scrub-wrap{ order:3; flex-basis:100%; }
+    .speed-select{ order:2; }
+    #infocard{ right:10px; left:10px; width:auto; }
+  }
+</style>
+
+<div id="scene-root"><canvas id="globe-canvas"></canvas></div>
+
+<div id="loading"><div class="loading-glyph"></div><p>Charting 1900&ndash;2100&hellip;</p></div>
+
+<div id="hint">drag to rotate &middot; scroll to zoom &middot; click a path or catalog row to select</div>
+
+<header id="topbar">
+  <div class="brand">
+    <span class="moon">🌑</span>
+    <h1>Solar Eclipse Browser</h1>
+    <span class="stat" id="brand-stat"></span>
+  </div>
+  <div id="filters">
+    <div class="filter-group yr-range">
+      <span class="filter-label">Years</span>
+      <div class="dual-slider">
+        <div class="track"></div>
+        <div class="track-fill" id="yr-track-fill"></div>
+        <input type="range" id="yr-lo" min="1900" max="2100" value="1900" step="1">
+        <input type="range" id="yr-hi" min="1900" max="2100" value="2100" step="1">
+      </div>
+      <output id="yr-out">1900 &ndash; 2100</output>
+    </div>
+    <div class="filter-group" id="type-toggles">
+      <span class="filter-label">Show</span>
+      <label class="chip-toggle" style="--dot:var(--c-total)"><input type="checkbox" data-type="total" checked>Total</label>
+      <label class="chip-toggle" style="--dot:var(--c-annular)"><input type="checkbox" data-type="annular" checked>Annular</label>
+      <label class="chip-toggle" style="--dot:var(--c-hybrid)"><input type="checkbox" data-type="hybrid" checked>Hybrid</label>
+      <label class="chip-toggle" style="--dot:var(--c-partial)"><input type="checkbox" data-type="partial">Partial (points)</label>
+    </div>
+    <div class="filter-group" id="layer-toggles">
+      <span class="filter-label">Layers</span>
+      <label class="chip-toggle" style="--dot:#e2c56a"><input type="checkbox" data-layer="cities" checked>Cities</label>
+      <label class="chip-toggle" style="--dot:#5aa9c9"><input type="checkbox" data-layer="rivers" checked>Rivers</label>
+      <label class="chip-toggle" style="--dot:#e8794a"><input type="checkbox" data-layer="umbra" checked>Umbra</label>
+      <label class="chip-toggle" style="--dot:#b7bfce"><input type="checkbox" data-layer="penumbra" checked>Penumbra</label>
+    </div>
+  </div>
+  <button id="catalog-toggle-btn">☰ Catalog</button>
+</header>
+
+<section id="catalog">
+  <div id="catalog-search">
+    <input type="text" id="search-input" placeholder="Jump to a year, e.g. 2024&hellip;">
+    <span id="catalog-count"></span>
+  </div>
+  <div id="catalog-list"></div>
+</section>
+
+<aside id="infocard">
+  <button id="infocard-close" aria-label="Close">✕</button>
+  <div class="kind-tag" id="ic-tag"></div>
+  <h2 id="ic-title"></h2>
+  <div class="stat-grid">
+    <div><div class="k">Greatest eclipse (UTC)</div><div class="v" id="ic-time"></div></div>
+    <div><div class="k">Obscuration</div><div class="v" id="ic-obsc"></div></div>
+    <div><div class="k">Path location</div><div class="v" id="ic-loc"></div></div>
+    <div><div class="k">Path duration</div><div class="v" id="ic-dur"></div></div>
+  </div>
+  <p id="infocard-note"></p>
+</aside>
+
+<footer id="console" class="empty">
+  <div id="readout">
+    <div class="title" id="rd-title">Select an eclipse to animate its path</div>
+    <div class="clock" id="rd-clock">&mdash;<span class="zone">UTC</span></div>
+  </div>
+  <div class="transport-controls">
+    <button class="tbtn" id="btn-replay" title="Restart" aria-label="Restart">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+    </button>
+    <button class="tbtn primary" id="btn-play" title="Play" aria-label="Play">
+      <svg id="icon-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+      <svg id="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="5" y="3" width="5" height="18"></rect><rect x="14" y="3" width="5" height="18"></rect></svg>
+    </button>
+  </div>
+  <div id="scrub-wrap">
+    <input type="range" id="scrub" min="0" max="1000" value="0" step="1">
+  </div>
+  <div class="speed-select" id="speed-select">
+    <button data-speed="0.5">0.5&times;</button>
+    <button data-speed="1" class="active">1&times;</button>
+    <button data-speed="2">2&times;</button>
+    <button data-speed="4">4&times;</button>
+  </div>
+</footer>
+
+<div id="legend">
+  <span><i style="background:var(--c-total)"></i>Total</span>
+  <span><i style="background:var(--c-annular)"></i>Annular</span>
+  <span><i style="background:var(--c-hybrid)"></i>Hybrid segment</span>
+  <span><i style="background:var(--c-partial)"></i>Partial (point only)</span>
+  <span><i style="background:#e8794a;opacity:.55"></i>Umbra/antumbra reach</span>
+  <span><i style="background:#b7bfce;opacity:.45"></i>Penumbra reach</span>
+</div>
+
+<!--
+  Loaded as classic global scripts (not ES modules / import maps) on purpose:
+  import-map support is where a lot of real-world browser/webview
+  compatibility breaks, and a failed module import here throws before any of
+  the app code below ever runs, leaving the loading screen stuck forever with
+  nothing in the UI to explain why. Plain <script src> global-namespace
+  loading works everywhere WebGL does.
+-->
+<script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.145.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+'use strict';
+if (typeof THREE === 'undefined') {
+  document.getElementById('loading').innerHTML =
+    '<p style="color:#e8794a;max-width:320px;text-align:center">Could not load the 3D engine (three.js) from the CDN. Check your network/ad-blocker and reload.</p>';
+  throw new Error('three.js failed to load');
+}
+
+/* ============================= config ============================= */
+const R = 100;                 // earth radius (scene units)
+const PATH_ALT = 1.006;        // path line altitude factor over R
+const MARK_ALT = 1.010;
+const UMBRA_ALT = 1.002;       // umbra/antumbra reach band, below the path line
+const PENUMBRA_ALT = 1.0012;   // penumbra reach band, lowest of the three
+const CITY_ALT = 1.001;
+const R_EARTH_KM = 6371.0;     // mean radius, for converting km reach -> angular radius
+const COLORS = {
+  total:   0xe8794a,
+  annular: 0x4c93e8,
+  hybrid:  0x2fb88a,   // used for legend swatch only; hybrid paths are vertex-colored per-segment
+  partial: 0x6b7383,
+};
+
+/* ============================= helpers ============================= */
+function latLonToVector3(lat, lon, radius) {
+  const phi = THREE.MathUtils.degToRad(90 - lat);
+  const theta = THREE.MathUtils.degToRad(lon + 180);
+  return new THREE.Vector3(
+    -radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta)
+  );
+}
+
+// Rotate unit vector P by angle `theta` (radians) around the unit axis
+// `axis` (Rodrigues' rotation formula, axis assumed perpendicular to P so the
+// az^2 term drops out). Used to build umbra/penumbra reach bands: rotating a
+// central-line point around its own path-tangent direction sweeps it along
+// the great circle perpendicular to travel, which is the geometrically
+// correct way to offset a point "sideways" on a sphere by an angular
+// distance -- unlike a flat-plane offset, this stays exact even for the
+// penumbra's ~30-35 degree angular radius.
+function rotateAroundAxis(P, axis, theta){
+  const cosT = Math.cos(theta), sinT = Math.sin(theta);
+  const cross = new THREE.Vector3().crossVectors(axis, P);
+  return P.clone().multiplyScalar(cosT).add(cross.multiplyScalar(sinT));
+}
+
+// Builds a ribbon mesh tracing `radiusKm[i]` either side of the unit-sphere
+// path `unitPts[i]`, vertex-colored per `colorHex[i]`, at scene altitude
+// `alt` (a multiple of R). Returns null if there's nothing to draw.
+function buildReachBand(unitPts, radiusKm, colorHex, alt, opacity){
+  const n = unitPts.length;
+  if (n < 2) return null;
+  const positions = new Float32Array(n*2*3);
+  const colors = new Float32Array(n*2*3);
+  for (let i=0;i<n;i++){
+    const P = unitPts[i];
+    const prev = unitPts[Math.max(i-1,0)];
+    const next = unitPts[Math.min(i+1,n-1)];
+    let forward = next.clone().sub(prev);
+    forward.sub(P.clone().multiplyScalar(forward.dot(P))); // project tangent
+    if (forward.lengthSq() < 1e-10) {
+      // Degenerate (near-duplicate) sample points, most often right at the
+      // start/end of a path where the shadow crawls slowly across the
+      // surface and consecutive 3-decimal lat/lon rows round to the same
+      // value. Fall back to *any* tangent direction at P (never an arbitrary
+      // world axis, which generally isn't perpendicular to P and would break
+      // the axis-perpendicular assumption the rotation below relies on).
+      const ref = Math.abs(P.y) < 0.9 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+      forward = new THREE.Vector3().crossVectors(P, ref);
+    }
+    forward.normalize();
+    const theta = Math.min(radiusKm[i] / R_EARTH_KM, Math.PI/2 - 0.02);
+    const left  = rotateAroundAxis(P, forward,  theta).multiplyScalar(R*alt);
+    const right = rotateAroundAxis(P, forward, -theta).multiplyScalar(R*alt);
+    const col = colorHex[i];
+    positions[i*6+0]=left.x;  positions[i*6+1]=left.y;  positions[i*6+2]=left.z;
+    positions[i*6+3]=right.x; positions[i*6+4]=right.y; positions[i*6+5]=right.z;
+    colors[i*6+0]=col.r; colors[i*6+1]=col.g; colors[i*6+2]=col.b;
+    colors[i*6+3]=col.r; colors[i*6+4]=col.g; colors[i*6+5]=col.b;
+  }
+  const indices = [];
+  for (let i=0;i<n-1;i++){
+    const a=i*2, b=i*2+1, c=(i+1)*2, d=(i+1)*2+1;
+    indices.push(a,b,c, b,c,d);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  geo.setIndex(indices);
+  const mat = new THREE.MeshBasicMaterial({
+    vertexColors:true, transparent:true, opacity, side:THREE.DoubleSide, depthWrite:false,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+const dtFmt = new Intl.DateTimeFormat('en-GB', { timeZone:'UTC', day:'numeric', month:'long', year:'numeric' });
+const timeFmt = new Intl.DateTimeFormat('en-GB', { timeZone:'UTC', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+
+function fmtDateTime(d){ return `${dtFmt.format(d)} • ${timeFmt.format(d)}`; }
+function fmtClock(d){ return timeFmt.format(d) + '  ' + dtFmt.format(d); }
+function fmtDuration(hrs){
+  const totalMin = Math.round(hrs*60);
+  const h = Math.floor(totalMin/60), m = totalMin%60;
+  return h>0 ? `${h}h ${m}m` : `${m}m`;
+}
+function fmtLoc(lat, lon){
+  const ns = lat>=0 ? 'N' : 'S', ew = lon>=0 ? 'E' : 'W';
+  return `${Math.abs(lat).toFixed(1)}°${ns}, ${Math.abs(lon).toFixed(1)}°${ew}`;
+}
+function categoryOf(rec){
+  if (!rec.path) return 'partial';
+  return rec.hybrid ? 'hybrid' : rec.kind;
+}
+function kindLabel(rec){
+  if (!rec.path) return 'Partial';
+  if (rec.hybrid) return 'Hybrid (Annular–Total)';
+  return rec.kind === 'total' ? 'Total' : 'Annular';
+}
+
+/* ============================= three.js scene ============================= */
+const canvas = document.getElementById('globe-canvas');
+// Cap the pixel ratio (retina/4K panels otherwise render 4x the fragment work
+// for no visible benefit) and skip MSAA on high-DPI screens, since the extra
+// device pixels already do the antialiasing job. No logarithmic depth buffer
+// either -- this scene's near/far range doesn't need it and it isn't free.
+const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: pixelRatio < 1.5, powerPreference: 'high-performance' });
+renderer.setPixelRatio(pixelRatio);
+renderer.setClearColor(0x000000, 0);
+renderer.outputEncoding = THREE.sRGBEncoding;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 5000);
+camera.position.set(0, 60, 300);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = R*1.25;
+controls.maxDistance = R*7;
+controls.rotateSpeed = 0.55;
+controls.zoomSpeed = 0.7;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.28;
+controls.target.set(0,0,0);
+let userInteracted = false;
+controls.addEventListener('start', () => { userInteracted = true; controls.autoRotate = false; });
+
+/* lighting */
+scene.add(new THREE.AmbientLight(0x8a97ad, 1.65));
+scene.add(new THREE.HemisphereLight(0xaecbff, 0x1c2536, 0.9));
+const sun = new THREE.DirectionalLight(0xfff3d6, 1.55);
+sun.position.set(-220, 90, 160);
+scene.add(sun);
+/* Point the sun light at the real sub-solar direction for a given eclipse instant,
+   so the day/night terminator on the globe is astronomically correct for whatever
+   eclipse is selected (defaults to the fixed angle above when nothing is selected). */
+function setSunFromSubsolar(lat, lon){
+  const dir = latLonToVector3(lat, lon, 1);
+  sun.position.copy(dir.multiplyScalar(300));
+}
+
+/* starfield */
+{
+  const starCount = 3400;
+  const pos = new Float32Array(starCount*3);
+  for (let i=0;i<starCount;i++){
+    const r = 900 + Math.random()*1400;
+    const u = Math.random(), v = Math.random();
+    const th = 2*Math.PI*u, ph = Math.acos(2*v-1);
+    pos[i*3]   = r*Math.sin(ph)*Math.cos(th);
+    pos[i*3+1] = r*Math.cos(ph);
+    pos[i*3+2] = r*Math.sin(ph)*Math.sin(th);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  const mat = new THREE.PointsMaterial({ color:0xffffff, size:1.3, sizeAttenuation:false, transparent:true, opacity:0.75 });
+  scene.add(new THREE.Points(geo, mat));
+}
+
+/* earth (texture built after data load) */
+const earthGeo = new THREE.SphereGeometry(R, 72, 56);
+const earthMat = new THREE.MeshPhongMaterial({ color:0x223349, shininess:6 });
+const earth = new THREE.Mesh(earthGeo, earthMat);
+scene.add(earth);
+
+/* atmosphere glow */
+{
+  const glowGeo = new THREE.SphereGeometry(R*1.045, 48, 36);
+  const glowMat = new THREE.ShaderMaterial({
+    uniforms: { glowColor: { value: new THREE.Color(0x6fb7ff) } },
+    vertexShader: `
+      varying float vIntensity;
+      void main(){
+        vec3 vNormal = normalize(normalMatrix * normal);
+        vec3 vNormel = normalize((modelViewMatrix * vec4(position,1.0)).xyz);
+        vIntensity = pow(0.62 - dot(vNormal, -vNormel), 2.8);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+      }`,
+    fragmentShader: `
+      varying float vIntensity;
+      uniform vec3 glowColor;
+      void main(){ gl_FragColor = vec4(glowColor, clamp(vIntensity,0.0,1.0)); }`,
+    side: THREE.BackSide, blending: THREE.AdditiveBlending, transparent:true, depthWrite:false,
+  });
+  scene.add(new THREE.Mesh(glowGeo, glowMat));
+}
+
+/* shadow marker (animated) */
+const markerGroup = new THREE.Group();
+markerGroup.visible = false;
+{
+  const core = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 16), new THREE.MeshBasicMaterial({ color:0x0a0a0a }));
+  const ringGeo = new THREE.RingGeometry(2.1, 3.1, 32);
+  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color:0xffffff, side:THREE.DoubleSide, transparent:true, opacity:0.85 }));
+  markerGroup.add(core, ring);
+}
+scene.add(markerGroup);
+
+/* highlight tube for the selected path */
+let highlightMesh = null;
+let umbraMesh = null, penumbraMesh = null;
+function clearHighlight(){
+  if (highlightMesh){ scene.remove(highlightMesh); highlightMesh.geometry.dispose(); highlightMesh.material.dispose(); highlightMesh=null; }
+  if (umbraMesh){ scene.remove(umbraMesh); umbraMesh.geometry.dispose(); umbraMesh.material.dispose(); umbraMesh=null; }
+  if (penumbraMesh){ scene.remove(penumbraMesh); penumbraMesh.geometry.dispose(); penumbraMesh.material.dispose(); penumbraMesh=null; }
+}
+function setHighlight(points3d, color){
+  if (points3d.length < 2) return;
+  const curve = new THREE.CatmullRomCurve3(points3d, false, 'catmullrom', 0.0);
+  const tube = new THREE.TubeGeometry(curve, Math.max(points3d.length*2,16), 0.55, 6, false);
+  const mat = new THREE.MeshBasicMaterial({ color, transparent:true, opacity:0.95 });
+  highlightMesh = new THREE.Mesh(tube, mat);
+  scene.add(highlightMesh);
+}
+/* umbra/antumbra + penumbra reach bands for the selected path, built from the
+   per-point `u`/`p` km half-widths astronomy-engine computed. */
+function setReachBands(rec){
+  if (!rec.path || rec.path.length < 2) return;
+  const unitPts = rec.path.map(p => latLonToVector3(p.lat, p.lon, 1));
+  const col = { T: new THREE.Color(COLORS.total), A: new THREE.Color(COLORS.annular) };
+  const kindColors = rec.path.map(p => p.k==='T' ? col.T : col.A);
+  const penColors = rec.path.map(() => new THREE.Color(0xb7bfce));
+
+  const uKm = rec.path.map(p => p.u);
+  const pKm = rec.path.map(p => p.p);
+
+  umbraMesh = buildReachBand(unitPts, uKm, kindColors, UMBRA_ALT, 0.38);
+  if (umbraMesh){ umbraMesh.visible = state.showLayers.umbra; scene.add(umbraMesh); }
+  penumbraMesh = buildReachBand(unitPts, pKm, penColors, PENUMBRA_ALT, 0.16);
+  if (penumbraMesh){ penumbraMesh.visible = state.showLayers.penumbra; scene.add(penumbraMesh); }
+}
+
+/* ============================= resize ============================= */
+const topbarEl = document.getElementById('topbar');
+function syncTopbarHeight(){
+  // The filter bar wraps onto extra lines on narrow screens, so the topbar's
+  // real height varies -- measure it instead of hardcoding, and use it to
+  // place the panels below (info card, catalog drawer, hint) so they never
+  // sit underneath the wrapped filters.
+  document.documentElement.style.setProperty('--topbar-h', topbarEl.offsetHeight + 'px');
+}
+function onResize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w,h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+  syncTopbarHeight();
+}
+addEventListener('resize', onResize);
+onResize();
+new ResizeObserver(syncTopbarHeight).observe(topbarEl);
+
+/* ============================= data load ============================= */
+const state = {
+  eclipses: [],
+  records: [],       // {rec, line, points3d, category}
+  filtered: [],
+  selected: null,
+  playing: false,
+  progress: 0,        // 0..1 along selected path
+  speed: 1,
+  yrLo: 1900, yrHi: 2100,
+  showType: { total:true, annular:true, hybrid:true, partial:false },
+  showLayers: { cities:true, rivers:true, umbra:true, penumbra:true },
+};
+
+const raycaster = new THREE.Raycaster();
+raycaster.params.Line.threshold = 1.6;
+const pointer = new THREE.Vector2();
+
+Promise.all([
+  fetch('eclipses.json').then(r=>r.json()),
+  fetch('mapdata.json').then(r=>r.json()),
+  fetch('cities.json').then(r=>r.json()),
+  fetch('rivers.json').then(r=>r.json()),
+]).then(([eclipses, mapdata, cities, rivers]) => {
+  state.eclipses = eclipses;
+  buildEarthTexture(mapdata);
+  buildPaths(eclipses);
+  buildCities(cities);
+  buildRivers(rivers);
+  buildCatalog();
+  applyFilters();
+  document.getElementById('brand-stat').innerHTML =
+    `<b>${eclipses.length}</b> eclipses &middot; <b>${eclipses.filter(e=>e.path).length}</b> with a central path`;
+
+  // Open on whichever central-path eclipse is closest to today, so the
+  // default view (and its day/night terminator) shows something meaningful.
+  {
+    const now = Date.now();
+    let best = null, bestDiff = Infinity;
+    for (const item of state.filtered){
+      if (!item.rec.path) continue;
+      const diff = Math.abs(new Date(item.rec.date).getTime() - now);
+      if (diff < bestDiff){ bestDiff = diff; best = item; }
+    }
+    if (best) selectEclipse(best, true);
+  }
+
+  document.getElementById('loading').classList.add('hidden');
+  setTimeout(()=>{ document.getElementById('hint').style.opacity = '0'; }, 5000);
+  animate();
+}).catch(err => {
+  document.getElementById('loading').innerHTML =
+    '<p style="color:#e8794a">Failed to load eclipse data: ' + (err && err.message ? err.message : err) + '</p>';
+  console.error(err);
+});
+
+/* ---------- earth texture from land/border vector data ----------
+   mapdata.land / mapdata.borders are SVG path "d" strings produced at build
+   time with d3-geo's equirectangular projection + spherical clipping, so
+   coastlines that cross the antimeridian (e.g. far-eastern Russia) are cut
+   correctly instead of drawing a spurious line across the whole map. */
+function buildEarthTexture(mapdata){
+  const w = mapdata.w || 4096, h = mapdata.h || 2048;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext('2d');
+
+  const ocean = ctx.createLinearGradient(0,0,0,h);
+  ocean.addColorStop(0,   '#123a5c');
+  ocean.addColorStop(0.5, '#164873');
+  ocean.addColorStop(1,   '#123a5c');
+  ctx.fillStyle = ocean;
+  ctx.fillRect(0,0,w,h);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  for (let lon=-150; lon<=180; lon+=30){
+    const x = (lon+180)/360*w;
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+  }
+  for (let lat=-60; lat<=60; lat+=30){
+    const y = (90-lat)/180*h;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+  }
+
+  const land = ctx.createLinearGradient(0,0,0,h);
+  land.addColorStop(0,   '#4b5c3f');
+  land.addColorStop(0.5, '#57683f');
+  land.addColorStop(1,   '#4b5c3f');
+  ctx.fillStyle = land;
+  const landPath = new Path2D(mapdata.land);
+  ctx.fill(landPath, 'evenodd');
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = 1;
+  ctx.stroke(landPath);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+  ctx.stroke(new Path2D(mapdata.borders));
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  tex.encoding = THREE.sRGBEncoding;
+  earthMat.map = tex;
+  earthMat.color.set(0xffffff);
+  earthMat.needsUpdate = true;
+}
+
+/* ---------- build path line objects ---------- */
+function buildPaths(eclipses){
+  const group = new THREE.Group();
+  scene.add(group);
+  const c = { T: new THREE.Color(COLORS.total), A: new THREE.Color(COLORS.annular) };
+
+  for (const rec of eclipses){
+    const category = categoryOf(rec);
+    let obj, points3d = null;
+
+    if (rec.path && rec.path.length >= 2){
+      points3d = rec.path.map(p => latLonToVector3(p.lat, p.lon, R*PATH_ALT));
+      const geo = new THREE.BufferGeometry().setFromPoints(points3d);
+      const colors = new Float32Array(points3d.length*3);
+      rec.path.forEach((p,i) => {
+        const col = p.k === 'T' ? c.T : c.A;
+        colors[i*3]=col.r; colors[i*3+1]=col.g; colors[i*3+2]=col.b;
+      });
+      geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+      const mat = new THREE.LineBasicMaterial({ vertexColors:true, transparent:true, opacity:0.82 });
+      obj = new THREE.Line(geo, mat);
+    } else {
+      const p3 = latLonToVector3(rec.peakLat, rec.peakLon, R*MARK_ALT);
+      const geo = new THREE.SphereGeometry(0.55, 8, 8);
+      const mat = new THREE.MeshBasicMaterial({ color: COLORS.partial, transparent:true, opacity:0.8 });
+      obj = new THREE.Mesh(geo, mat);
+      obj.position.copy(p3);
+      points3d = [p3];
+    }
+    obj.userData.rec = rec;
+    obj.userData.category = category;
+    group.add(obj);
+    state.records.push({ rec, obj, points3d, category });
+  }
+  state.pathGroup = group;
+}
+
+/* ---------- cities layer (curated reference points, not exhaustive) ---------- */
+let _dotTex = null;
+function dotTexture(){
+  if (_dotTex) return _dotTex;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 32;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(16,16,0,16,16,16);
+  g.addColorStop(0,   'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,244,214,0.9)');
+  g.addColorStop(1,   'rgba(255,244,214,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,32,32);
+  _dotTex = new THREE.CanvasTexture(cv);
+  return _dotTex;
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+function makeCityLabel(text){
+  const cv = document.createElement('canvas');
+  const ctx = cv.getContext('2d');
+  const fontSize = 28;
+  ctx.font = `500 ${fontSize}px "IBM Plex Sans", sans-serif`;
+  const textW = ctx.measureText(text).width;
+  cv.width = Math.ceil(textW) + 20;
+  cv.height = fontSize + 16;
+  ctx.font = `500 ${fontSize}px "IBM Plex Sans", sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(8,10,16,0.6)';
+  roundRect(ctx, 0, 0, cv.width, cv.height, 8); ctx.fill();
+  ctx.fillStyle = '#f4e9c8';
+  ctx.fillText(text, 10, cv.height/2 + 1);
+  const tex = new THREE.CanvasTexture(cv);
+  const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false, opacity:0 });
+  const spr = new THREE.Sprite(mat);
+  const worldScale = 0.032; // world units per texture px, tuned for R=100 scene
+  spr.scale.set(cv.width*worldScale, cv.height*worldScale, 1);
+  return spr;
+}
+function buildCities(cities){
+  const group = new THREE.Group();
+  const positions = new Float32Array(cities.length*3);
+  cities.forEach((c,i) => {
+    const v = latLonToVector3(c.lat, c.lon, R*CITY_ALT);
+    positions[i*3]=v.x; positions[i*3+1]=v.y; positions[i*3+2]=v.z;
+  });
+  const dotsGeo = new THREE.BufferGeometry();
+  dotsGeo.setAttribute('position', new THREE.BufferAttribute(positions,3));
+  const dotsMat = new THREE.PointsMaterial({
+    size:2.4, sizeAttenuation:true, map:dotTexture(), color:0xffffff,
+    transparent:true, alphaTest:0.05, depthWrite:false,
+  });
+  group.add(new THREE.Points(dotsGeo, dotsMat));
+
+  const labels = [];
+  for (const c of cities){
+    const spr = makeCityLabel(c.name);
+    spr.position.copy(latLonToVector3(c.lat, c.lon, R*CITY_ALT*1.012));
+    group.add(spr);
+    labels.push(spr);
+  }
+  scene.add(group);
+  state.citiesGroup = group;
+  state.cityLabels = labels;
+}
+
+/* ---------- rivers layer (illustrative courses, not survey-grade) ---------- */
+function buildRivers(rivers){
+  const group = new THREE.Group();
+  const color = new THREE.Color(0x5aa9c9);
+  for (const riv of rivers){
+    const waypoints = riv.pts.map(([lat,lon]) => latLonToVector3(lat, lon, R*1.0007));
+    const curve = new THREE.CatmullRomCurve3(waypoints, false, 'catmullrom', 0.15);
+    const smooth = curve.getPoints(waypoints.length*10);
+    const geo = new THREE.BufferGeometry().setFromPoints(smooth);
+    const mat = new THREE.LineBasicMaterial({ color, transparent:true, opacity:0.55 });
+    group.add(new THREE.Line(geo, mat));
+  }
+  scene.add(group);
+  state.riversGroup = group;
+}
+
+/* ---------- filtering ---------- */
+function applyFilters(){
+  const { yrLo, yrHi, showType } = state;
+  state.filtered = [];
+  for (const item of state.records){
+    const yr = new Date(item.rec.date).getUTCFullYear();
+    const visible = yr >= yrLo && yr <= yrHi && showType[item.category];
+    item.obj.visible = visible;
+    if (visible) state.filtered.push(item);
+  }
+  renderCatalogList();
+  document.getElementById('catalog-count').textContent = state.filtered.length + ' shown';
+}
+
+/* ---------- catalog panel ---------- */
+let catalogRowsBuilt = [];
+function buildCatalog(){
+  catalogRowsBuilt = state.records.slice().sort((a,b)=> new Date(a.rec.date)-new Date(b.rec.date));
+}
+function renderCatalogList(){
+  const q = document.getElementById('search-input').value.trim();
+  const list = document.getElementById('catalog-list');
+  list.innerHTML = '';
+  let lastDecade = null;
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+  for (const item of catalogRowsBuilt){
+    const { rec, category } = item;
+    const yr = new Date(rec.date).getUTCFullYear();
+    if (yr < state.yrLo || yr > state.yrHi) continue;
+    if (!state.showType[category]) continue;
+    if (q && !rec.date.includes(q) && String(yr) !== q) continue;
+
+    const decade = Math.floor(yr/10)*10;
+    if (decade !== lastDecade){
+      const lab = document.createElement('div');
+      lab.className = 'decade-label';
+      lab.textContent = decade + 's';
+      frag.appendChild(lab);
+      lastDecade = decade;
+    }
+    const row = document.createElement('button');
+    row.className = 'ecl-row' + (state.selected===item ? ' active' : '');
+    row.style.setProperty('--dot', colorHexFor(category));
+    row.innerHTML = `<span class="ecl-dot"></span><span class="ecl-date">${rec.date.slice(0,10)}</span><span class="ecl-kind">${kindLabel(rec)}</span>`;
+    row.addEventListener('click', () => selectEclipse(item, true));
+    frag.appendChild(row);
+    shown++;
+  }
+  list.appendChild(frag);
+}
+function colorHexFor(category){
+  const n = category==='hybrid' ? COLORS.hybrid : COLORS[category];
+  return '#' + n.toString(16).padStart(6,'0');
+}
+
+/* ============================= selection & animation ============================= */
+function selectEclipse(item, scrollIntoView){
+  state.selected = item;
+  state.playing = false;
+  state.progress = 0;
+  updatePlayIcon();
+  clearHighlight();
+
+  const { rec, points3d, category } = item;
+  const hasPath = !!rec.path;
+  const color = category==='hybrid' ? COLORS.hybrid : COLORS[category] || COLORS.partial;
+  if (hasPath){ setHighlight(points3d, color); setReachBands(rec); }
+
+  document.getElementById('infocard').classList.add('show');
+  document.getElementById('ic-tag').textContent = kindLabel(rec);
+  document.getElementById('ic-tag').style.setProperty('--tagcol', colorHexFor(category));
+  document.getElementById('ic-title').textContent = (hasPath ? kindLabel(rec) : 'Partial') + ' Solar Eclipse';
+  document.getElementById('ic-time').textContent = fmtDateTime(new Date(rec.date));
+  document.getElementById('ic-obsc').textContent = Math.round(rec.obscuration*1000)/10 + '%';
+  document.getElementById('ic-loc').textContent = fmtLoc(rec.peakLat, rec.peakLon);
+  document.getElementById('ic-dur').textContent = hasPath ? fmtDuration(rec.endHr-rec.startHr) : '—';
+  document.getElementById('infocard-note').textContent = hasPath
+    ? 'Line color shows local shadow type along the track (orange = total, blue = annular). The wide bands trace how far the umbra/antumbra and the penumbra reach to either side.'
+    : 'Partial eclipses spread over a huge region with no single ground track — shown as the point of greatest eclipse only.';
+
+  document.getElementById('console').classList.toggle('empty', !hasPath);
+  document.getElementById('rd-title').textContent = (hasPath ? kindLabel(rec) : 'Partial') + ' Eclipse — ' + rec.date.slice(0,10);
+  document.getElementById('rd-clock').innerHTML = hasPath ? '&mdash;<span class="zone">UTC</span>' : 'no path<span class="zone"></span>';
+  document.getElementById('scrub').value = 0;
+  markerGroup.visible = hasPath;
+  if (hasPath) markerGroup.position.copy(points3d[0]);
+
+  setSunFromSubsolar(rec.subLat, rec.subLon);
+  flyTo(rec.peakLat, rec.peakLon);
+
+  if (scrollIntoView) renderCatalogList();
+  else renderCatalogList();
+}
+
+function flyTo(lat, lon){
+  const dir = latLonToVector3(lat, lon, 1);
+  const dist = Math.max(camera.position.length(), R*2.1);
+  flight = {
+    fromPos: camera.position.clone(),
+    toPos: dir.clone().multiplyScalar(dist),
+    fromTarget: controls.target.clone(),
+    toTarget: new THREE.Vector3(0,0,0),
+    t: 0,
+  };
+}
+let flight = null;
+
+function progressToPoint(points3d, t){
+  const n = points3d.length;
+  const f = t * (n-1);
+  const i = Math.min(Math.floor(f), n-2 < 0 ? 0 : n-2);
+  const frac = n>1 ? f-i : 0;
+  const a = points3d[i], b = points3d[Math.min(i+1, n-1)];
+  return a.clone().lerp(b, frac);
+}
+
+function updatePlayIcon(){
+  document.getElementById('icon-play').style.display = state.playing ? 'none' : '';
+  document.getElementById('icon-pause').style.display = state.playing ? '' : 'none';
+}
+
+/* ============================= UI wiring ============================= */
+document.getElementById('infocard-close').addEventListener('click', () => {
+  document.getElementById('infocard').classList.remove('show');
+});
+
+document.getElementById('btn-play').addEventListener('click', () => {
+  if (!state.selected || !state.selected.rec.path) return;
+  state.playing = !state.playing;
+  if (state.playing && state.progress >= 1) state.progress = 0;
+  updatePlayIcon();
+});
+document.getElementById('btn-replay').addEventListener('click', () => {
+  if (!state.selected) return;
+  state.progress = 0;
+  state.playing = true;
+  updatePlayIcon();
+});
+document.getElementById('scrub').addEventListener('input', (e) => {
+  if (!state.selected) return;
+  state.playing = false;
+  updatePlayIcon();
+  state.progress = Number(e.target.value)/1000;
+});
+document.getElementById('speed-select').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-speed]');
+  if (!btn) return;
+  state.speed = Number(btn.dataset.speed);
+  document.querySelectorAll('#speed-select button').forEach(b=>b.classList.toggle('active', b===btn));
+});
+
+function yearsFromSliders(){
+  let lo = Number(document.getElementById('yr-lo').value);
+  let hi = Number(document.getElementById('yr-hi').value);
+  if (lo > hi) [lo,hi] = [hi,lo];
+  state.yrLo = lo; state.yrHi = hi;
+  document.getElementById('yr-out').textContent = `${lo} – ${hi}`;
+  const pct0 = (lo-1900)/(2100-1900)*100, pct1 = (hi-1900)/(2100-1900)*100;
+  const fill = document.getElementById('yr-track-fill');
+  fill.style.left = pct0+'%'; fill.style.right = (100-pct1)+'%';
+  applyFilters();
+}
+document.getElementById('yr-lo').addEventListener('input', yearsFromSliders);
+document.getElementById('yr-hi').addEventListener('input', yearsFromSliders);
+
+// Default to a window around today: the last 2 years through the next 5.
+{
+  const nowYear = new Date().getUTCFullYear();
+  document.getElementById('yr-lo').value = Math.max(1900, nowYear - 2);
+  document.getElementById('yr-hi').value = Math.min(2100, nowYear + 5);
+}
+yearsFromSliders();
+
+document.querySelectorAll('#type-toggles input[type=checkbox]').forEach(cb => {
+  cb.addEventListener('change', () => {
+    state.showType[cb.dataset.type] = cb.checked;
+    applyFilters();
+  });
+});
+
+document.querySelectorAll('#layer-toggles input[type=checkbox]').forEach(cb => {
+  cb.addEventListener('change', () => {
+    const layer = cb.dataset.layer;
+    state.showLayers[layer] = cb.checked;
+    if (layer === 'cities' && state.citiesGroup) state.citiesGroup.visible = cb.checked;
+    if (layer === 'rivers' && state.riversGroup) state.riversGroup.visible = cb.checked;
+    if (layer === 'umbra' && umbraMesh) umbraMesh.visible = cb.checked;
+    if (layer === 'penumbra' && penumbraMesh) penumbraMesh.visible = cb.checked;
+  });
+});
+
+document.getElementById('search-input').addEventListener('input', renderCatalogList);
+
+document.getElementById('catalog-toggle-btn').addEventListener('click', () => {
+  document.getElementById('catalog').classList.toggle('open');
+});
+
+/* click-to-select on the globe */
+renderer.domElement.addEventListener('pointerdown', (ev) => {
+  pointerDownPos = { x: ev.clientX, y: ev.clientY };
+});
+let pointerDownPos = null;
+renderer.domElement.addEventListener('pointerup', (ev) => {
+  if (!pointerDownPos) return;
+  const dx = ev.clientX-pointerDownPos.x, dy = ev.clientY-pointerDownPos.y;
+  if (Math.hypot(dx,dy) > 6) return; // was a drag, not a click
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((ev.clientX-rect.left)/rect.width)*2-1;
+  pointer.y = -((ev.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(pointer, camera);
+  const objs = state.filtered.map(f=>f.obj);
+  const hits = raycaster.intersectObjects(objs, false);
+  if (hits.length){
+    const rec = hits[0].object.userData.rec;
+    const item = state.records.find(r=>r.rec===rec);
+    if (item) selectEclipse(item, true);
+  }
+});
+
+/* ============================= render loop ============================= */
+let lastT = performance.now();
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min((now-lastT)/1000, 0.1);
+  lastT = now;
+
+  if (flight){
+    flight.t = Math.min(flight.t + dt/0.9, 1);
+    const e = 1-Math.pow(1-flight.t, 3);
+    camera.position.lerpVectors(flight.fromPos, flight.toPos, e);
+    controls.target.lerpVectors(flight.fromTarget, flight.toTarget, e);
+    if (flight.t>=1) flight = null;
+  }
+
+  if (state.selected && state.selected.rec.path){
+    const { rec, points3d } = state.selected;
+    if (state.playing){
+      const baseDuration = 11; // seconds for a full pass at 1x
+      state.progress += dt / (baseDuration/state.speed);
+      if (state.progress >= 1){ state.progress = 1; state.playing = false; updatePlayIcon(); }
+    }
+    const p = progressToPoint(points3d, state.progress);
+    markerGroup.position.copy(p);
+    markerGroup.lookAt(0,0,0);
+    document.getElementById('scrub').value = Math.round(state.progress*1000);
+    const hrs = rec.startHr + (rec.endHr-rec.startHr)*state.progress;
+    const clockDate = new Date(new Date(rec.date).getTime() + hrs*3600*1000);
+    document.getElementById('rd-clock').innerHTML = timeFmt.format(clockDate) + '<span class="zone">UTC • ' + dtFmt.format(clockDate) + '</span>';
+  }
+
+  if (state.cityLabels && state.cityLabels.length){
+    // Fade city name labels in as the camera gets close enough to read them,
+    // so the globe isn't cluttered with ~70 labels at a full-earth zoom.
+    const dist = camera.position.length();
+    const near = R*1.55, far = R*3.0;
+    let t = (far - dist) / (far - near);
+    t = Math.max(0, Math.min(1, t));
+    const opacity = state.showLayers.cities ? t : 0;
+    for (const spr of state.cityLabels) spr.material.opacity = opacity;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+</script>
