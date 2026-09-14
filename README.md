@@ -4,7 +4,7 @@ An interactive 3D globe of every solar eclipse from 1900 to 2100 — total, annu
 
 [Solar Eclipse Browser Demo](https://jurgenkobierczynski.com/Solar-Eclipse-Browser/index.html)
 
-![Solar Eclipse Browser screenshot](screenshots/eclipse-atlas.png)
+![Solar Eclipse Browser screenshot](screenshots/solar-eclipse-browser.jpg)
 
 ## What it does
 
