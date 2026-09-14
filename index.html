@@ -808,10 +808,24 @@ function buildPaths(eclipses){
     }
     obj.userData.rec = rec;
     obj.userData.category = category;
+    obj.userData.baseOpacity = obj.material.opacity;
     group.add(obj);
     state.records.push({ rec, obj, points3d, category });
   }
   state.pathGroup = group;
+}
+
+/* ---------- focus mode: dim every other path so the selected eclipse's
+   umbra/penumbra bands read as clearly attached to ITS track, instead of
+   blending into dozens of overlapping unrelated paths from other years ---- */
+function setPathFocus(selectedRec){
+  for (const item of state.records){
+    const isSel = item.rec === selectedRec;
+    item.obj.material.opacity = isSel ? item.obj.userData.baseOpacity : item.obj.userData.baseOpacity * 0.16;
+  }
+}
+function clearPathFocus(){
+  for (const item of state.records) item.obj.material.opacity = item.obj.userData.baseOpacity;
 }
 
 /* ---------- cities layer (curated reference points, not exhaustive) ---------- */
@@ -964,6 +978,7 @@ function selectEclipse(item, scrollIntoView){
   state.progress = 0;
   updatePlayIcon();
   clearHighlight();
+  setPathFocus(item.rec);
 
   const { rec, points3d, category } = item;
   const hasPath = !!rec.path;
